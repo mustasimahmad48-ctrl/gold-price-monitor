@@ -1,5 +1,4 @@
-
-"use strict";
+﻿"use strict";
 
 require("dotenv").config();
 
@@ -8,73 +7,18 @@ const { calculateGoldRates } = require("./src/goldCalculations");
 const { calculateSilverRates } = require("./src/silverCalculations");
 
 // ==========================================
-// CONFIGURATION VALIDATION
+// CONFIGURATION
 // ==========================================
 
-function readPositiveInteger(name, fallback) {
-  const value = process.env[name] ?? String(fallback);
-
-  if (!/^[1-9]\d*$/.test(value)) {
-    throw new Error(`${name} must be a positive integer.`);
-  }
-
-  const number = Number(value);
-
-  if (!Number.isSafeInteger(number)) {
-    throw new Error(`${name} is outside the supported range.`);
-  }
-
-  return number;
-}
-
-function readUrl(name, fallback) {
-  const value = process.env[name] ?? fallback;
-  let parsed;
-
-  try {
-    parsed = new URL(value);
-  } catch {
-    throw new Error(`${name} must be a valid URL.`);
-  }
-
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    throw new Error(`${name} must use HTTP or HTTPS.`);
-  }
-
-  return parsed.toString();
-}
-
-const PORT = readPositiveInteger("PORT", 3000);
-
-const REQUEST_TIMEOUT_MS = readPositiveInteger(
-  "REQUEST_TIMEOUT_MS",
-  10000
-);
-
-const MAX_GOLD_AGE_MS = readPositiveInteger(
-  "MAX_GOLD_AGE_MS",
-  300000
-);
-
-const CACHE_TTL_MS = readPositiveInteger(
-  "CACHE_TTL_MS",
-  30000
-);
-
-const GOLD_API_URL = readUrl(
-  "GOLD_API_URL",
-  "https://api.gold-api.com/price/XAU/USD"
-);
-
-const SILVER_API_URL = readUrl(
-  "SILVER_API_URL",
-  "https://api.gold-api.com/price/XAG"
-);
-
-const CURRENCY_API_URL = readUrl(
-  "CURRENCY_API_URL",
-  "https://api.frankfurter.dev/v2/rate/usd/pkr"
-);
+const {
+  PORT,
+  REQUEST_TIMEOUT_MS,
+  MAX_GOLD_AGE_MS,
+  CACHE_TTL_MS,
+  GOLD_API_URL,
+  SILVER_API_URL,
+  CURRENCY_API_URL,
+} = require("./src/config/env");
 
 // ==========================================
 // FETCH JSON WITH TIMEOUT
@@ -89,10 +33,7 @@ async function fetchJson(url, label, fetchImpl) {
       headers: { Accept: "application/json" },
     });
   } catch (error) {
-    if (
-      error?.name === "TimeoutError" ||
-      error?.name === "AbortError"
-    ) {
+    if (error?.name === "TimeoutError" || error?.name === "AbortError") {
       throw new Error(`${label} request timed out.`);
     }
 
@@ -131,9 +72,7 @@ async function getMetalPrice(fetchImpl, config) {
   }
 
   if (data.currency !== "USD" || data.symbol !== symbol) {
-    throw new Error(
-      `${label} returned an unexpected currency or symbol.`
-    );
+    throw new Error(`${label} returned an unexpected currency or symbol.`);
   }
 
   if (!data.updatedAt) {
@@ -154,7 +93,7 @@ async function getMetalPrice(fetchImpl, config) {
 
   if (ageMs > MAX_GOLD_AGE_MS) {
     throw new Error(
-      `${label} quote is stale: ${Math.floor(ageMs / 1000)} seconds old.`
+      `${label} quote is stale: ${Math.floor(ageMs / 1000)} seconds old.`,
     );
   }
 
@@ -200,10 +139,7 @@ async function getSilverPrice(fetchImpl) {
 // ==========================================
 
 function parseIsoCalendarDate(value) {
-  if (
-    typeof value !== "string" ||
-    !/^\d{4}-\d{2}-\d{2}$/.test(value)
-  ) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return NaN;
   }
 
@@ -221,11 +157,7 @@ function parseIsoCalendarDate(value) {
 }
 
 async function getUsdToPkrRate(fetchImpl) {
-  const data = await fetchJson(
-    CURRENCY_API_URL,
-    "Currency API",
-    fetchImpl
-  );
+  const data = await fetchJson(CURRENCY_API_URL, "Currency API", fetchImpl);
 
   if (!data || typeof data !== "object" || Array.isArray(data)) {
     throw new Error("Invalid USD/PKR exchange-rate response.");
@@ -312,10 +244,7 @@ function createApp({ fetchImpl = globalThis.fetch } = {}) {
       getUsdToPkrRate(fetchImpl),
     ]);
 
-    const rates = calculateGoldRates(
-      gold.pricePerTroyOunce,
-      fx.rate
-    );
+    const rates = calculateGoldRates(gold.pricePerTroyOunce, fx.rate);
 
     const body = {
       status: "success",
@@ -342,10 +271,7 @@ function createApp({ fetchImpl = globalThis.fetch } = {}) {
       ],
     };
 
-    const remainingAge = Math.max(
-      0,
-      MAX_GOLD_AGE_MS - gold.ageMs
-    );
+    const remainingAge = Math.max(0, MAX_GOLD_AGE_MS - gold.ageMs);
 
     return {
       body,
@@ -363,10 +289,7 @@ function createApp({ fetchImpl = globalThis.fetch } = {}) {
       getUsdToPkrRate(fetchImpl),
     ]);
 
-    const rates = calculateSilverRates(
-      silver.pricePerTroyOunce,
-      fx.rate
-    );
+    const rates = calculateSilverRates(silver.pricePerTroyOunce, fx.rate);
 
     const body = {
       status: "success",
@@ -393,10 +316,7 @@ function createApp({ fetchImpl = globalThis.fetch } = {}) {
       ],
     };
 
-    const remainingAge = Math.max(
-      0,
-      MAX_GOLD_AGE_MS - silver.ageMs
-    );
+    const remainingAge = Math.max(0, MAX_GOLD_AGE_MS - silver.ageMs);
 
     return {
       body,
@@ -555,17 +475,77 @@ function createApp({ fetchImpl = globalThis.fetch } = {}) {
 // Keep the existing app import working for server.test.js.
 const app = createApp();
 
+async function startServer() {
+  const {
+    connectMongoDB,
+    disconnectMongoDB,
+  } = require("./src/config/database");
+
+  // Connect before accepting requests when MongoDB is configured.
+  await connectMongoDB();
+
+  const server = await new Promise((resolve, reject) => {
+    const httpServer = app.listen(PORT);
+
+    httpServer.once("listening", () => resolve(httpServer));
+    httpServer.once("error", reject);
+  });
+
+  console.log(
+    `Gold and Silver Price Monitor API running at http://localhost:${PORT}`,
+  );
+  console.log(`Gold rates: http://localhost:${PORT}/api/gold`);
+  console.log(`Silver rates: http://localhost:${PORT}/api/silver`);
+  console.log(`Health check: http://localhost:${PORT}/health`);
+  console.log(`Cache TTL: ${CACHE_TTL_MS} ms`);
+
+  let shuttingDown = false;
+
+  async function shutdown(signal) {
+    if (shuttingDown) {
+      return;
+    }
+
+    shuttingDown = true;
+    console.log(`${signal} received; shutting down gracefully.`);
+
+    try {
+      await new Promise((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      await disconnectMongoDB();
+      console.log("Shutdown completed successfully.");
+    } catch (error) {
+      console.error("Shutdown failed:", error.message);
+      process.exitCode = 1;
+    }
+  }
+
+  process.once("SIGINT", () => {
+    void shutdown("SIGINT");
+  });
+
+  process.once("SIGTERM", () => {
+    void shutdown("SIGTERM");
+  });
+
+  return server;
+}
+
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(
-      `Gold and Silver Price Monitor API running at http://localhost:${PORT}`
-    );
-    console.log(`Gold rates: http://localhost:${PORT}/api/gold`);
-    console.log(`Silver rates: http://localhost:${PORT}/api/silver`);
-    console.log(`Health check: http://localhost:${PORT}/health`);
-    console.log(`Cache TTL: ${CACHE_TTL_MS} ms`);
+  startServer().catch((error) => {
+    console.error("Server startup failed:", error.message);
+    process.exitCode = 1;
   });
 }
 
 module.exports = app;
 module.exports.createApp = createApp;
+module.exports.startServer = startServer;

@@ -3,3 +3,14 @@ node_modules/
 .env
 
 coverage/
+
+# Frontend dependencies and build output
+client/node_modules/
+client/dist/
+
+# Environment files and local secrets
+.env.*
+!.env.example
+
+# Logs and local coverage/build artifacts
+npm-debug.log*
